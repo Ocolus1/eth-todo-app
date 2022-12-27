@@ -1,4 +1,16 @@
-export default function Header() {
+import { useState, useEffect } from "react";
+
+export default function Header(props) {
+	const [account, setAccount] = useState("");
+
+	useEffect(() => {
+		setAccount(shortenAddress(props.account));
+	}, [props.account]);
+
+	function shortenAddress(address) {
+		return `${address.substring(0, 4)}...${address.substring(40)}`;
+	}
+
 	return (
 		<nav className="navbar navbar-expand-lg bg-body-tertiary">
 			<div className="container">
@@ -19,7 +31,13 @@ export default function Header() {
 				<div className="collapse navbar-collapse" id="navbarNavAltMarkup">
 					<div className="navbar-nav ms-auto">
 						<a className="nav-link active" aria-current="page" href="#">
-							Account: 
+							{account == "" ?
+								<button className="btn btn-dark rounded-pill"
+								onClick={props.connectToMetamask}
+								>Connect Wallet</button>
+								:	
+								<button className="btn btn-dark rounded-pill">Connected {account}</button>
+							}
 						</a>
 					</div>
 				</div>
