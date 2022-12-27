@@ -1,8 +1,10 @@
 import Head from 'next/head';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import React, {  useState } from 'react';
+import "bootstrap/dist/css/bootstrap.min.css";
+import React, {  useState, useEffect } from 'react';
 import Header from '../components/header';
 import { ethers } from "ethers";
+import { TODO_LIST_ABI, TODO_LIST_ADDRESS } from '../config';
+import Script from 'next/script'
 
 const data = [
   {
@@ -23,31 +25,71 @@ const data = [
 export default function Home() {
 	const [tasks, setTasks] = useState("");
 	const [todoList, setTodoList] = useState([]);
+	const [daiContract, setDaiContract] = useState(null);
+	const [signer, setSigner] = useState(null);
 	const [taskCount, setTaskCount] = useState(0);
   const [account, setAccount] = useState("");
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    connectToMetamask()
+  }, [])
+
+  const connectToMetamask = async () => {
+		const provider = new ethers.providers.Web3Provider(window.ethereum)
+		const accounts = await provider.send("eth_requestAccounts", []);
+    const signer = provider.getSigner()
+    setSigner(signer);
+		setAccount(accounts[0]);
+    const daiContract = new ethers.Contract(TODO_LIST_ADDRESS, TODO_LIST_ABI, provider);
+    setDaiContract(daiContract);
+    const taskCount = await daiContract.taskCount();
+    setTaskCount(taskCount);
+    let _tasks = []
+    for (var i = 1; i <= taskCount; i++) {
+      const task = await daiContract.tasks(i);
+      _tasks.push(task);
+    }
+    setTodoList(_tasks);
+    setLoading(false);
+	}
 
 	const addTask = () => {
     if (tasks != "") {
-
-      let task = {
-        id: taskCount + 1,
-        title: tasks,
-        completed: false,
-      }
-      setTodoList([...todoList, task]);
-      setTaskCount(taskCount + 1);
+      setLoading(true);
+      const daiContractWithSigner = daiContract.connect(signer);
+      daiContractWithSigner.createTask(tasks)
+      .then((tx) => {
+        return tx.wait();
+      })
+      .then( async (tx) => {
+        await connectToMetamask();
+        setLoading(false);
+      })
+      .catch((error) => {
+          console.error(error);
+          setLoading(false);
+      });
     } 
 	};
 
 	const toggleCompleted = (id) => {
-    const newTasks = todoList.map((task) => {
-      if (task.id === id) {
-        task.completed = !task.completed;
-      }
-      return task;
+    setLoading(true);
+    const daiContractWithSigner = daiContract.connect(signer);
+    daiContractWithSigner.toggleCompleted(id)
+    .then((tx) => {
+      return tx.wait();
+    })
+    .then( async (tx) => {
+      await connectToMetamask();
+      console.log("I may call metamask")
+      setLoading(false);
+      console.log("finish togling")
+    })
+    .catch((error) => {
+        console.error(error);
+        setLoading(false);
     });
-    setTodoList( newTasks );
   };
 
   const ifEmpty = () => {
@@ -55,22 +97,22 @@ export default function Home() {
       return (
         <>
           {data.map((item) => {
-            return <li className="list-group-item" key={item.id}>{item.title}</li>
+            return <p className="list-group-item" key={item.id}>{item.title}</p>
           })}
         </>
       )
     } else {
       return (
         <>
-          {todoList?.map((item) => {
+          {todoList?.map((item, key) => {
             return (
-              <div className="form-check" key={item.id}>
+              <div className="form-check" key={key}>
                 <input className="form-check-input" type="checkbox" 
                 defaultChecked={item.completed} 
                 onClick={() => toggleCompleted(item.id)}/>
                 <label className={`form-check-label ${item.completed ? 'text-decoration-line-through' : ''}`} 
                   htmlFor="flexCheckChecked">
-                  {item.title}
+                  {item.content}
                 </label>
               </div>
             )
@@ -79,6 +121,7 @@ export default function Home() {
       )
     }
   }
+
 	return (
 		<>
 			<Head>
@@ -93,50 +136,53 @@ export default function Home() {
 				/>
 				<link rel="icon" href="/favicon.ico" /> 
       </Head>
+      <Script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" 
+      integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" 
+      crossorigin="anonymous"></Script>
 			<main>
-				<Header />
-				<div className="mt-4">
-					<div className="w-50 m-auto border p-2">
+				<Header account={account} connectToMetamask={connectToMetamask} />
+				<div className="container mt-5">
+					<div className="row justify-content-center">
+            <div className='col-lg-6 col-sm-12 border'>
 						<h1 className="text-center mb-4">Todo List</h1>
-						<div className="row mb-4">
-							<div className="col-6">
-              <ul className="list-group">
-                {ifEmpty()}
-              </ul>
-              </div>
-							<div className="col-6">
-								<div className="">
-									<div className="mb-3 row">
-                    <div className="col-12">
-                      <form
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        addTask();
-                        setTasks("")
-                      }}
-                      >
-                        <input
-                          type="text"
-                          value={tasks}
-                          className="form-control"
-                          placeholder="Tell me what you want to do...."
-                          onChange={(e) => {
-                            setTasks(e.target.value);
-                          }}
-                        />
-                        <input type="submit" hidden={true} />
-                      </form>
+            {loading
+                ? <div id="loader" className="text-center"><p className="text-center">Loading...</p></div>
+                : 
+                  <div className="row mb-4">
+                    <div className="col-lg-6 order-last order-lg-first">
+                    <ul className="list-group">
+                      {ifEmpty()}
+                    </ul>
                     </div>
-                    {/* <div className="col-4 m-0">
-                      <button className="btn btn-dark"
-                      onClick={addTask}>
-                        Add task
-                      </button>
-                    </div> */}
-									</div>
-								</div>
-							</div>
-						</div>
+                    <div className="col-lg-6">
+                      <div className="">
+                        <div className="mb-3 row">
+                          <div className="col-12">
+                            <form
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              addTask();
+                              setTasks("")
+                            }}
+                            >
+                              <input
+                                type="text"
+                                value={tasks}
+                                className="form-control"
+                                placeholder="Tell me what you want to do...."
+                                onChange={(e) => {
+                                  setTasks(e.target.value);
+                                }}
+                              />
+                              <input type="submit" hidden={true} />
+                            </form>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+              }
+            </div>
 					</div>
 				</div>
 			</main>
